@@ -1,0 +1,5 @@
+# Mac file
+.DS_Store
+
+# Build folders
+/target
