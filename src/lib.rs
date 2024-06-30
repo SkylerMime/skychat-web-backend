@@ -1,3 +1,4 @@
+use futures::TryStreamExt;
 use mongodb::{
     bson::{doc, DateTime},
     Client,
@@ -6,17 +7,18 @@ use serde::{Deserialize, Serialize};
 
 const MONGODB_URI: &'static str = "mongodb://localhost";
 
-// Represents a document in the collection
-#[derive(Clone, Debug, Serialize, Deserialize)]
+// Represents a document in the Users collection
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct User {
     pub name: String,
     pub last_login: DateTime,
 }
 
-impl PartialEq for User {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.last_login == other.last_login
-    }
+// Represents a document in the Chat Messages collection
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct ChatMessage {
+    pub username: String,
+    pub message: String,
 }
 
 // Database functions
@@ -37,17 +39,57 @@ pub async fn get_user(name: &str) -> User {
     retrieved_user
 }
 
+pub async fn get_messages_collection() -> mongodb::Collection<ChatMessage> {
+    let client = Client::with_uri_str(MONGODB_URI)
+        .await
+        .expect("Database should be connectable");
+
+    let db = client.database("skyserver");
+    db.collection::<ChatMessage>("messages")
+}
+
+pub async fn put_message(name: String, message: String) {
+    let new_message = ChatMessage {
+        username: name,
+        message,
+    };
+
+    let messages_collection = get_messages_collection().await;
+    messages_collection
+        .insert_one(new_message, None)
+        .await
+        .expect("Chat message should be inserted into the database");
+}
+
+pub async fn get_messages() -> Vec<ChatMessage> {
+    let messages_collection = get_messages_collection().await;
+    let mut messages_cursor = messages_collection
+        .find(doc! {}, None)
+        .await
+        .expect("Find should find messages");
+
+    let mut chat_messages: Vec<ChatMessage> = Vec::new();
+    while let Some(message) = messages_cursor
+        .try_next()
+        .await
+        .expect("Should get the next thing")
+    {
+        chat_messages.push(message);
+    }
+    chat_messages
+}
+
 #[cfg(test)]
 mod test {
     use mongodb::{
         bson::{doc, DateTime},
         error::Error,
         options::ReplaceOptions,
-        results::UpdateResult,
+        results::{DeleteResult, UpdateResult},
         Client,
     };
 
-    use crate::{User, MONGODB_URI};
+    use crate::{get_messages_collection, ChatMessage, User, MONGODB_URI};
 
     fn get_test_user() -> User {
         User {
@@ -73,11 +115,34 @@ mod test {
             .await
     }
 
+    async fn delete_sample_message() -> Result<DeleteResult, Error> {
+        let chat_collection = get_messages_collection().await;
+
+        chat_collection
+            .delete_many(doc! { "message": "Test Message"}, None)
+            .await
+    }
+
     #[tokio::test]
     async fn gets_sample_user() {
         upsert_sample_user()
             .await
             .expect("Sample user should be successfully upserted");
         assert_eq!(crate::get_user("Sample User").await, get_test_user());
+    }
+
+    #[tokio::test]
+    async fn puts_and_gets_messages() {
+        delete_sample_message()
+            .await
+            .expect("Sample message should be cleared before test");
+        crate::put_message(String::from("Alice"), String::from("Test Message")).await;
+        assert_eq!(
+            crate::get_messages().await,
+            vec!(ChatMessage {
+                username: String::from("Alice"),
+                message: String::from("Test Message"),
+            })
+        );
     }
 }
