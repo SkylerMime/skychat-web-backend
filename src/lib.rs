@@ -109,10 +109,12 @@ mod test {
             .await
     }
 
-    async fn delete_all_messages() -> Result<DeleteResult, Error> {
+    async fn delete_all_testuser_messages() -> Result<DeleteResult, Error> {
         let chat_collection = get_messages_collection().await;
 
-        chat_collection.delete_many(doc! {}, None).await
+        chat_collection
+            .delete_many(doc! { "username": "testuser" }, None)
+            .await
     }
 
     #[tokio::test]
@@ -125,16 +127,16 @@ mod test {
 
     #[tokio::test]
     async fn puts_and_gets_messages() {
-        delete_all_messages()
+        delete_all_testuser_messages()
             .await
-            .expect("Sample message should be cleared before test");
+            .expect("Sample messages should be cleared before test");
         let test_message = ChatMessage {
-            username: String::from("Alice"),
+            username: String::from("testuser"),
             message: String::from("Test Message"),
         };
         crate::put_message(test_message.clone())
             .await
             .expect("No post errors in test");
-        assert_eq!(crate::get_messages().await, vec!(test_message));
+        assert!(crate::get_messages().await.contains(&test_message));
     }
 }
