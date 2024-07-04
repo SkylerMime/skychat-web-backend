@@ -1,4 +1,7 @@
+use rocket::http::Status;
+use rocket::serde::json::Json;
 use rocket::{self, routes};
+use skyserver::ChatMessage;
 
 #[rocket::get("/")]
 async fn index() -> &'static str {
@@ -11,11 +14,29 @@ async fn user(name: &str) -> String {
     format!("User's name: {}", retrieved_user.name)
 }
 
+#[rocket::post("/messages-handler", data = "<message>")]
+async fn messages_poster(message: Json<ChatMessage>) -> (Status, String) {
+    match skyserver::put_message(message.into_inner()).await {
+        Ok(response) => (Status::Ok, format!("New message with id: {:?}", response)),
+        Err(error) => (
+            Status::NotFound,
+            format!("Problem adding message to database: {:?}", error),
+        ),
+    }
+}
+
+#[rocket::get("/messages-handler")]
+async fn messages_getter() -> Json<Vec<ChatMessage>> {
+    Json(skyserver::get_messages().await)
+}
+
 #[rocket::launch]
 fn rocket() -> _ {
     rocket::build()
         .mount("/", routes![index])
         .mount("/", routes![user])
+        .mount("/", routes![messages_poster])
+        .mount("/", routes![messages_getter])
 }
 
 #[cfg(test)]
@@ -24,10 +45,25 @@ mod test {
 
     use super::rocket;
     use rocket::http::Status;
-    use rocket::local::blocking::Client;
+    use rocket::local::blocking::{Client, LocalResponse};
+    use skyserver::ChatMessage;
 
     fn get_client() -> Client {
         Client::tracked(rocket()).expect("rocket instance should be valid")
+    }
+
+    fn get_sample_message() -> ChatMessage {
+        ChatMessage {
+            username: String::from("Alice"),
+            message: String::from("Post Test Message"),
+        }
+    }
+
+    fn post_sample_message(client: &Client) -> LocalResponse {
+        client
+            .post("/messages-handler")
+            .json(&(get_sample_message()))
+            .dispatch()
     }
 
     #[test]
@@ -50,5 +86,26 @@ mod test {
             response.into_string(),
             Some("User's name: Sample User".into())
         )
+    }
+
+    #[test]
+    fn can_submit_message() {
+        let client = get_client();
+        let response = post_sample_message(&client);
+
+        assert_eq!(response.status(), Status::Ok);
+    }
+
+    #[test]
+    fn can_get_messages() {
+        let client = get_client();
+        post_sample_message(&client);
+        let response = client.get("/messages-handler").dispatch();
+
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response
+            .into_json::<Vec<ChatMessage>>()
+            .expect("Deserializable chat message")
+            .contains(&get_sample_message()));
     }
 }

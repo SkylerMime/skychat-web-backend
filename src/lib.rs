@@ -1,6 +1,8 @@
 use futures::TryStreamExt;
 use mongodb::{
     bson::{doc, DateTime},
+    error::Error,
+    results::InsertOneResult,
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -15,7 +17,7 @@ pub struct User {
 }
 
 // Represents a document in the Chat Messages collection
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ChatMessage {
     pub username: String,
     pub message: String,
@@ -48,17 +50,9 @@ pub async fn get_messages_collection() -> mongodb::Collection<ChatMessage> {
     db.collection::<ChatMessage>("messages")
 }
 
-pub async fn put_message(name: String, message: String) {
-    let new_message = ChatMessage {
-        username: name,
-        message,
-    };
-
+pub async fn put_message(message: ChatMessage) -> Result<InsertOneResult, Error> {
     let messages_collection = get_messages_collection().await;
-    messages_collection
-        .insert_one(new_message, None)
-        .await
-        .expect("Chat message should be inserted into the database");
+    messages_collection.insert_one(message, None).await
 }
 
 pub async fn get_messages() -> Vec<ChatMessage> {
@@ -115,12 +109,10 @@ mod test {
             .await
     }
 
-    async fn delete_sample_message() -> Result<DeleteResult, Error> {
+    async fn delete_all_messages() -> Result<DeleteResult, Error> {
         let chat_collection = get_messages_collection().await;
 
-        chat_collection
-            .delete_many(doc! { "message": "Test Message"}, None)
-            .await
+        chat_collection.delete_many(doc! {}, None).await
     }
 
     #[tokio::test]
@@ -133,16 +125,16 @@ mod test {
 
     #[tokio::test]
     async fn puts_and_gets_messages() {
-        delete_sample_message()
+        delete_all_messages()
             .await
             .expect("Sample message should be cleared before test");
-        crate::put_message(String::from("Alice"), String::from("Test Message")).await;
-        assert_eq!(
-            crate::get_messages().await,
-            vec!(ChatMessage {
-                username: String::from("Alice"),
-                message: String::from("Test Message"),
-            })
-        );
+        let test_message = ChatMessage {
+            username: String::from("Alice"),
+            message: String::from("Test Message"),
+        };
+        crate::put_message(test_message.clone())
+            .await
+            .expect("No post errors in test");
+        assert_eq!(crate::get_messages().await, vec!(test_message));
     }
 }
