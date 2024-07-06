@@ -56,6 +56,16 @@ async fn messages_getter() -> Json<Vec<ChatMessage>> {
     Json(skyserver::get_messages().await)
 }
 
+#[rocket::get("/messages-stream")]
+fn messages_stream(ws: ws::WebSocket) -> ws::Stream!['static] {
+    ws::Stream! { ws =>
+        // When a new message is added to the database
+        for await message in ws {
+            yield message?;
+        }
+    }
+}
+
 #[rocket::launch]
 fn rocket() -> _ {
     rocket::build()
@@ -64,6 +74,7 @@ fn rocket() -> _ {
         .mount("/", routes![user])
         .mount("/", routes![messages_poster])
         .mount("/", routes![messages_getter])
+        .mount("/", routes![messages_stream])
 }
 
 #[cfg(test)]
@@ -71,6 +82,7 @@ mod test {
     use crate::{rocket_uri_macro_index, rocket_uri_macro_user};
 
     use super::rocket;
+    use mongodb::bson::DateTime;
     use rocket::http::Status;
     use rocket::local::blocking::{Client, LocalResponse};
     use skyserver::ChatMessage;
@@ -83,7 +95,15 @@ mod test {
         ChatMessage {
             username: String::from("testuser"),
             message: String::from("Post Test Message"),
-            datetime: String::from("Tue Aug 19 1975 23:15:30 GMT+0200 (PDT)"),
+            datetime: DateTime::builder()
+                .year(1983)
+                .month(8)
+                .day(19)
+                .hour(23)
+                .minute(15)
+                .second(30)
+                .build()
+                .expect("Should build without errors"),
         }
     }
 

@@ -21,7 +21,7 @@ pub struct User {
 pub struct ChatMessage {
     pub username: String,
     pub message: String,
-    pub datetime: String,
+    pub datetime: DateTime,
 }
 
 // Database functions
@@ -134,7 +134,15 @@ mod test {
         let test_message = ChatMessage {
             username: String::from("testuser"),
             message: String::from("Test Message"),
-            datetime: String::from("Tue Aug 19 1975 23:15:30 GMT+0200 (PDT)"),
+            datetime: DateTime::builder()
+                .year(1975)
+                .month(8)
+                .day(19)
+                .hour(23)
+                .minute(15)
+                .second(30)
+                .build()
+                .expect("Should build without errors"),
         };
         crate::put_message(test_message.clone())
             .await
