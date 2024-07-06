@@ -1,6 +1,6 @@
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, DateTime},
+    bson::{self, doc, DateTime},
     error::Error,
     results::InsertOneResult,
     Client,
@@ -21,6 +21,8 @@ pub struct User {
 pub struct ChatMessage {
     pub username: String,
     pub message: String,
+    // serializes as an RFC 3339 / ISO-8601 string, which is how the Frontend will send it as JSON
+    #[serde(with = "bson::serde_helpers::bson_datetime_as_rfc3339_string")]
     pub datetime: DateTime,
 }
 
