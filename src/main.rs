@@ -83,6 +83,7 @@ mod test {
         ChatMessage {
             username: String::from("testuser"),
             message: String::from("Post Test Message"),
+            datetime: String::from("Tue Aug 19 1975 23:15:30 GMT+0200 (PDT)"),
         }
     }
 
