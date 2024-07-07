@@ -1,3 +1,4 @@
+use mongodb::bson::DateTime;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::{self, routes};
@@ -60,9 +61,11 @@ async fn messages_getter() -> Json<Vec<ChatMessage>> {
 fn messages_stream(ws: ws::WebSocket) -> ws::Stream!['static] {
     ws::Stream! { ws =>
         // When a new message is added to the database
-        for await message in ws {
-            yield message?;
-        }
+        let example_message: ChatMessage = ChatMessage {username: String::from("Server"),
+            message: String::from("Example Message"),
+            datetime: DateTime::now()};
+        let message_json_string: String = serde_json::to_string(&example_message).expect("Should sucessfully serialize");
+        yield message_json_string.into();
     }
 }
 
