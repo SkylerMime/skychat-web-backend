@@ -3,11 +3,13 @@ use mongodb::{
     bson::{self, doc, DateTime},
     error::Error,
     results::InsertOneResult,
-    Client,
+    Client, Cursor,
 };
 use serde::{Deserialize, Serialize};
 
 const MONGODB_URI: &'static str = "mongodb://localhost";
+
+// TODO: Replace Expects with Match
 
 // Represents a document in the Users collection
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -58,13 +60,9 @@ pub async fn put_message(message: ChatMessage) -> Result<InsertOneResult, Error>
     messages_collection.insert_one(message, None).await
 }
 
-pub async fn get_messages() -> Vec<ChatMessage> {
-    let messages_collection = get_messages_collection().await;
-    let mut messages_cursor = messages_collection
-        .find(doc! {}, None)
-        .await
-        .expect("Find should find messages");
-
+async fn extract_messages_from_cursor(
+    mut messages_cursor: Cursor<ChatMessage>,
+) -> Vec<ChatMessage> {
     let mut chat_messages: Vec<ChatMessage> = Vec::new();
     while let Some(message) = messages_cursor
         .try_next()
@@ -74,6 +72,33 @@ pub async fn get_messages() -> Vec<ChatMessage> {
         chat_messages.push(message);
     }
     chat_messages
+}
+
+pub async fn get_messages() -> Vec<ChatMessage> {
+    let messages_collection = get_messages_collection().await;
+    let messages_cursor = messages_collection
+        .find(doc! {}, None)
+        .await
+        .expect("Find should find messages");
+
+    extract_messages_from_cursor(messages_cursor).await
+}
+
+pub async fn get_all_messages_after_date(min_date: DateTime) -> Vec<ChatMessage> {
+    let messages_collection = get_messages_collection().await;
+    // Note: MongoDB uses the same Document object for queries.
+    let min_date = min_date
+        .try_to_rfc3339_string()
+        .expect("Date should be serializable");
+    let date_filter = doc! {
+        "datetime": { "$gt": min_date }
+    };
+    let messages_cursor = messages_collection
+        .find(date_filter, None)
+        .await
+        .expect("Find should find messages");
+
+    extract_messages_from_cursor(messages_cursor).await
 }
 
 #[cfg(test)]
@@ -148,7 +173,49 @@ mod test {
         };
         crate::put_message(test_message.clone())
             .await
-            .expect("No post errors in test");
+            .expect("No post errors should occur in test");
         assert!(crate::get_messages().await.contains(&test_message));
+    }
+
+    #[tokio::test]
+    async fn only_gets_later_messages() {
+        delete_all_testuser_messages()
+            .await
+            .expect("Sample messages should be cleared before test");
+        let early_message = ChatMessage {
+            username: String::from("testuser"),
+            message: String::from("Early Message"),
+            datetime: DateTime::builder()
+                .year(2005)
+                .month(1)
+                .day(1)
+                .build()
+                .expect("Should build without errors"),
+        };
+        let late_message = ChatMessage {
+            username: String::from("testuser"),
+            message: String::from("Late Message"),
+            datetime: DateTime::builder()
+                .year(2105)
+                .month(1)
+                .day(1)
+                .build()
+                .expect("Should build without errors"),
+        };
+        crate::put_message(early_message.clone())
+            .await
+            .expect("No post errors should occur in test");
+        crate::put_message(late_message.clone())
+            .await
+            .expect("No post errors should occur in test");
+        let min_date_filter = DateTime::builder()
+            .year(2100)
+            .month(1)
+            .day(1)
+            .build()
+            .expect("Should build without errors");
+        let retrieved_messages = crate::get_all_messages_after_date(min_date_filter).await;
+        assert_eq!(retrieved_messages.len(), 1);
+        assert_eq!(retrieved_messages[0], late_message);
     }
 }
