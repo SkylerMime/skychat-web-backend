@@ -3,7 +3,7 @@ use mongodb::bson::{doc, DateTime};
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::{self, routes};
-use skyserver::{get_all_messages_after_date, get_messages_collection, ChatMessage};
+use skyserver::{get_messages_collection, ChatMessage};
 
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
