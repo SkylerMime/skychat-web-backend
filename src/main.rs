@@ -1,8 +1,9 @@
-use mongodb::bson::DateTime;
+use futures::StreamExt;
+use mongodb::bson::{doc, DateTime};
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::{self, routes};
-use skyserver::ChatMessage;
+use skyserver::{get_all_messages_after_date, get_messages_collection, ChatMessage};
 
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
@@ -60,12 +61,20 @@ async fn messages_getter() -> Json<Vec<ChatMessage>> {
 #[rocket::get("/messages-stream")]
 fn messages_stream(ws: ws::WebSocket) -> ws::Stream!['static] {
     ws::Stream! { ws =>
-        // When a new message is added to the database
         let example_message: ChatMessage = ChatMessage {username: String::from("Server"),
-            message: String::from("Example Message"),
+            message: String::from("Welcome back to the chat stream!"),
             datetime: DateTime::now()};
         let message_json_string: String = serde_json::to_string(&example_message).expect("Should sucessfully serialize");
         yield message_json_string.into();
+
+        // Main loop for tracking new messages
+        let insert_events_pipeline = vec![ doc! { "$match": doc! { "operationType": "insert" } } ];
+        let mut new_documents_stream = get_messages_collection().await.watch(insert_events_pipeline, None).await.expect("Collection should be watchable");
+
+        while let Some(insert_event) = new_documents_stream.next().await.transpose().expect("Should successfuly transpose") {
+            let message = insert_event.full_document;
+            yield serde_json::to_string(&message).expect("ChatMessage should successfully serialize").into();
+        }
     }
 }
 

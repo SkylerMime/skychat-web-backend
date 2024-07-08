@@ -215,6 +215,9 @@ mod test {
             .build()
             .expect("Should build without errors");
         let retrieved_messages = crate::get_all_messages_after_date(min_date_filter).await;
+        delete_all_testuser_messages()
+            .await
+            .expect("Sample messages should be cleared before test");
         assert_eq!(retrieved_messages.len(), 1);
         assert_eq!(retrieved_messages[0], late_message);
     }
