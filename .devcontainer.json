@@ -1,0 +1,13 @@
+{
+	"customizations": {
+		"codespaces": {
+			"repositories": {
+				"SkylerMime/skychat-web-frontend": {
+					"permissions": {
+						"contents": "write"
+					}
+				}
+			}
+		}
+	}
+}
